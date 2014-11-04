@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
@@ -88,6 +89,12 @@ public class DatasetSink extends AbstractSink implements Configurable {
   // for rolling files at a given interval
   private int rollIntervalS = DatasetSinkConstants.DEFAULT_ROLL_INTERVAL;
   private long lastRolledMs = 0l;
+
+  // for rolling writers at a given size
+  private int rollSize = DatasetSinkConstants.DEFAULT_ROLL_SIZE;
+  private int bytesWritten = 0;
+
+  private boolean waitForRoll = false;
 
   // for working with avro serialized records
   private GenericRecord datum = null;
@@ -179,6 +186,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
     this.rollIntervalS = context.getInteger(
         DatasetSinkConstants.CONFIG_KITE_ROLL_INTERVAL,
         DatasetSinkConstants.DEFAULT_ROLL_INTERVAL);
+    this.rollSize = context.getInteger(
+        DatasetSinkConstants.CONFIG_KITE_ROLL_SIZE,
+        DatasetSinkConstants.DEFAULT_ROLL_SIZE);
 
     this.counter = new SinkCounter(datasetName);
   }
@@ -186,6 +196,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
   @Override
   public synchronized void start() {
     this.lastRolledMs = System.currentTimeMillis();
+    this.bytesWritten = 0;
     counter.start();
     // signal that this sink is ready to process
     LOG.info("Started DatasetSink " + getName());
@@ -209,6 +220,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
       writer.close();
       this.writer = null;
       this.lastRolledMs = System.currentTimeMillis();
+      this.bytesWritten = 0;
     }
 
     // signal that this sink has stopped
@@ -229,12 +241,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
     }
 
     // handle file rolling
-    if ((System.currentTimeMillis() - lastRolledMs) / 1000 > rollIntervalS) {
-      // close the current writer and get a new one
-      writer.close();
-      this.writer = newWriter(login, target);
-      this.lastRolledMs = System.currentTimeMillis();
-      LOG.info("Rolled writer for " + getName());
+    if (shouldRoll()) {
+      rollWriter();
     }
 
     Channel channel = getChannel();
@@ -244,24 +252,35 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
       transaction = channel.getTransaction();
       transaction.begin();
-      for (; processedEvents < batchSize; processedEvents += 1) {
+      for (; waitForRoll || processedEvents < batchSize; processedEvents += 1) {
         Event event = channel.take();
         if (event == null) {
           // no events available in the channel
-          break;
+          if (!waitForRoll || shouldRoll()) {
+            break;
+          }
+        } else {
+
+          this.datum = deserialize(event, reuseDatum ? datum : null);
+
+          // writeEncoded would be an optimization in some cases, but HBase
+          // will not support it and partitioned Datasets need to get partition
+          // info from the entity Object. We may be able to avoid the
+          // serialization round-trip otherwise.
+          writer.write(datum);
         }
 
-        this.datum = deserialize(event, reuseDatum ? datum : null);
-
-        // writeEncoded would be an optimization in some cases, but HBase
-        // will not support it and partitioned Datasets need to get partition
-        // info from the entity Object. We may be able to avoid the
-        // serialization round-trip otherwise.
-        writer.write(datum);
+        if (shouldRoll()) {
+          break;
+        }
       }
 
-      // TODO: Add option to sync, depends on CDK-203
-      writer.flush();
+      if (shouldRoll()) {
+        rollWriter();
+      } else {
+        // TODO: Add option to sync, depends on CDK-203
+        writer.flush();
+      }
 
       // commit after data has been written and flushed
       transaction.commit();
@@ -295,6 +314,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
       writer.close();
       this.writer = null;
       this.lastRolledMs = System.currentTimeMillis();
+      this.bytesWritten = 0;
 
       // handle the exception
       Throwables.propagateIfInstanceOf(th, Error.class);
@@ -323,6 +343,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
     Preconditions.checkArgument(allowedFormats().contains(formatName),
       "Unsupported format: " + formatName);
 
+    this.waitForRoll = "parquet".equals(formatName);
+
     Schema newSchema = descriptor.getSchema();
     if (targetSchema == null || !newSchema.equals(targetSchema)) {
       this.targetSchema = descriptor.getSchema();
@@ -334,6 +356,27 @@ public class DatasetSink extends AbstractSink implements Configurable {
     this.datasetName = view.getDataset().getName();
 
     return view.newWriter();
+  }
+
+  private boolean shouldRoll() {
+    long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
+        System.currentTimeMillis() - lastRolledMs);
+    return elapsedTimeSeconds > rollIntervalS ||
+        (rollSize > 0 && bytesWritten >= rollSize);
+  }
+
+  private void rollWriter() {
+    // close the current writer and get a new one
+    writer.close();
+    this.writer = newWriter(login, target);
+
+    long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
+        System.currentTimeMillis() - lastRolledMs);
+    LOG.info("Rolled writer for dataset {} after {} seconds and {} bytes",
+        new Object[] { datasetName, elapsedTimeSeconds,  bytesWritten } );
+
+    this.lastRolledMs = System.currentTimeMillis();
+    this.bytesWritten = 0;
   }
 
   /**
@@ -349,7 +392,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
     // no checked exception is thrown in the CacheLoader
     DatumReader<GenericRecord> reader = readers.getUnchecked(schema(event));
     try {
-      return reader.read(reuse, decoder);
+      GenericRecord record = reader.read(reuse, decoder);
+      bytesWritten += event.getBody().length;
+      return record;
     } catch (IOException ex) {
       throw new EventDeliveryException("Cannot deserialize event", ex);
     }

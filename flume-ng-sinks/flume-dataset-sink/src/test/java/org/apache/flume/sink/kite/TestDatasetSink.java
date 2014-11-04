@@ -430,6 +430,30 @@ public class TestDatasetSink {
   }
 
   @Test
+  public void testSizeBasedRolling()
+      throws EventDeliveryException, InterruptedException {
+    // use a new roll size
+    config.put("kite.rollSize", "24"); // in bytes
+
+    DatasetSink sink = sink(in, config);
+
+    Dataset<GenericRecord> records = Datasets.load(FILE_DATASET_URI);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+
+    sink.process(); // rolling happens in the process method
+
+    Assert.assertEquals(Sets.newHashSet(expected), read(records));
+
+    // wait until the end to stop because it would close the files
+    sink.stop();
+  }
+
+  @Test
   public void testCompatibleSchemas() throws EventDeliveryException {
     DatasetSink sink = sink(in, config);
 

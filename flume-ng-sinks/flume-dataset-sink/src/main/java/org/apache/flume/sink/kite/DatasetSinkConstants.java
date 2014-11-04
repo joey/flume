@@ -47,6 +47,12 @@ public class DatasetSinkConstants {
   public static int DEFAULT_ROLL_INTERVAL = 30; // seconds
 
   /**
+   * Maximum number of bytes to write before rolling writers.
+   */
+  public static final String CONFIG_KITE_ROLL_SIZE = "kite.rollSize";
+  public static int DEFAULT_ROLL_SIZE = -1; // ignore
+
+  /**
    * Headers with avro schema information is expected.
    */
   public static final String AVRO_SCHEMA_LITERAL_HEADER =
