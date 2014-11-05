@@ -1,0 +1,15 @@
+{
+  "name": "Event",
+  "namespace": "org.apache.flume.test.util",
+  "type": "record",
+  "fields": [
+    {
+      "name": "payload",
+      "type": "string"
+    },
+    {
+      "name": "timestamp",
+      "type": "long"
+    }
+  ]
+}

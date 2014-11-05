@@ -51,8 +51,8 @@ limitations under the License.
 
     <hadoop2.version>2.4.0</hadoop2.version>
     <thrift.version>0.7.0</thrift.version>
-    <kite.version>0.15.0</kite.version>
-    <hive.version>0.10.0</hive.version>
+    <kite.version>0.17.0</kite.version>
+    <hive.version>0.12.0</hive.version>
   </properties>
 
   <modules>
@@ -144,7 +144,19 @@ limitations under the License.
           </dependency>
           <dependency>
             <groupId>org.apache.hadoop</groupId>
+            <artifactId>${hadoop.common.artifact.id}</artifactId>
+            <classifier>tests</classifier>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-hdfs</artifactId>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-hdfs</artifactId>
+            <classifier>tests</classifier>
             <version>${hadoop.version}</version>
           </dependency>
           <dependency>
@@ -222,7 +234,33 @@ limitations under the License.
           </dependency>
           <dependency>
             <groupId>org.apache.hadoop</groupId>
+            <artifactId>${hadoop.common.artifact.id}</artifactId>
+            <classifier>tests</classifier>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>${hadoop.common.artifact.id}</artifactId>
+            <type>test-jar</type>
+            <classifier>tests</classifier>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-hdfs</artifactId>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-hdfs</artifactId>
+            <classifier>tests</classifier>
+            <version>${hadoop.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-hdfs</artifactId>
+            <type>test-jar</type>
+            <classifier>tests</classifier>
             <version>${hadoop.version}</version>
           </dependency>
           <dependency>
@@ -1316,6 +1354,28 @@ limitations under the License.
       <dependency>
         <groupId>org.apache.hive</groupId>
         <artifactId>hive-metastore</artifactId>
+        <version>${hive.version}</version>
+      </dependency>
+
+      <!-- Dependency for kite-minicluster -->
+      <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-common</artifactId>
+        <version>${hive.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-serde</artifactId>
+        <version>${hive.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-service</artifactId>
+        <version>${hive.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-shims</artifactId>
         <version>${hive.version}</version>
       </dependency>
 
