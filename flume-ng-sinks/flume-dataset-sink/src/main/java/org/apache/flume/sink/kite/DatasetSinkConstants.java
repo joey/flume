@@ -18,9 +18,11 @@
 
 package org.apache.flume.sink.kite;
 
+import org.kitesdk.data.URIBuilder;
+
 public class DatasetSinkConstants {
   /**
-   * URI of the Kite DatasetRepository.
+   * URI of the Kite Dataset
    */
   public static final String CONFIG_KITE_DATASET_URI = "kite.dataset.uri";
 
@@ -35,6 +37,13 @@ public class DatasetSinkConstants {
   public static final String CONFIG_KITE_DATASET_NAME = "kite.dataset.name";
 
   /**
+   * Namespace of the Kite Dataset to write into.
+   */
+  public static final String CONFIG_KITE_DATASET_NAMESPACE =
+      "kite.dataset.namespace";
+  public static final String DEFAULT_NAMESPACE = URIBuilder.NAMESPACE_DEFAULT;
+
+  /**
    * Number of records to process from the incoming channel per call to process.
    */
   public static final String CONFIG_KITE_BATCH_SIZE = "kite.batchSize";
@@ -47,7 +56,60 @@ public class DatasetSinkConstants {
   public static int DEFAULT_ROLL_INTERVAL = 30; // seconds
 
   /**
-   * Headers with avro schema information is expected.
+   * Flag for committing the Flume transaction on each batch. When set to false,
+   * Flume will only commit the transaction when roll interval has expired.
+   * Setting this to false requires enough space in the channel to handle all
+   * events delivered during the roll interval. This parameter is ignored
+   * if the Dataset implementation doesn't support sync() such as when writing
+   * to a Parquet Dataset. Defaults to true.
+   */
+  public static final String CONFIG_COMMIT_ON_BATCH = "kite.commiteOnBatch";
+  public static boolean DEFAULT_COMMIT_ON_BATCH = true;
+
+  /**
+   * Parser used to parse Flume Events into Kite entities.
+   */
+  public static final String CONFIG_ENTITY_PARSER = "kite.entity-parser";
+
+  /**
+   * Built-in entity parsers
+   */
+  public static final String AVRO_ENTITY_PARSER = "avro";
+  public static final String DEFAULT_ENTITY_PARSER = AVRO_ENTITY_PARSER;
+  public static final String[] AVAILABLE_PARSERS = new String[] {
+    AVRO_ENTITY_PARSER
+  };
+
+  /**
+   * Policy used to handle non-recoverable failures.
+   */
+  public static final String CONFIG_FAILURE_POLICY = "kite.failure-policy";
+
+  /**
+   * Write non-recoverable Flume events to a Kite dataset.
+   */
+  public static final String SAVE_FAILURE_POLICY = "save";
+
+  /**
+   * The URI to write non-recoverable Flume events to in the case of an error.
+   * If the dataset doesn't exist, it will be created.
+   */
+  public static final String CONFIG_KITE_ERROR_DATASET_URI =
+      "kite.error.dataset.uri";
+
+  /**
+   * Retry non-recoverable Flume events. This will lead to a never ending cycle
+   * of failure, but matches the previous default semantics of the DatasetSink.
+   */
+  public static final String RETRY_FAILURE_POLICY = "retry";
+  public static final String DEFAULT_FAILURE_POLICY = RETRY_FAILURE_POLICY;
+  public static final String[] AVAILABLE_POLICIES = new String[] {
+    RETRY_FAILURE_POLICY,
+    SAVE_FAILURE_POLICY
+  };
+
+  /**
+   * Headers where avro schema information is expected.
    */
   public static final String AVRO_SCHEMA_LITERAL_HEADER =
       "flume.avro.schema.literal";
