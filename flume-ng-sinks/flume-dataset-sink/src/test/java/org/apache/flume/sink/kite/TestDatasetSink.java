@@ -132,6 +132,7 @@ public class TestDatasetSink {
     Datasets.create(FILE_DATASET_URI, DESCRIPTOR);
 
     this.config = new Context();
+    config.put("keep-alive", "0");
     this.in = new MemoryChannel();
     Configurables.configure(in, config);
 
@@ -227,6 +228,19 @@ public class TestDatasetSink {
     // run the sink
     sink.start();
     sink.process();
+
+    // the transaction should not commit during the call to process
+    assertThrows("Transaction should still be open", IllegalStateException.class,
+        new Callable() {
+          @Override
+          public Object call() throws EventDeliveryException {
+            in.getTransaction().begin();
+            return null;
+          }
+        });
+    // The records won't commit until the call to stop()
+    Assert.assertEquals("Should not have committed", 0, read(created).size());
+
     sink.stop();
 
     Assert.assertEquals(Sets.newHashSet(expected), read(created));
@@ -558,6 +572,140 @@ public class TestDatasetSink {
           .setHeaders(new HashMap<CharSequence, CharSequence>())
           .build()),
         read(Datasets.load(ERROR_DATASET_URI, AvroFlumeEvent.class)));
+  }
+
+  @Test
+  public void testCommitOnBatch() throws EventDeliveryException {
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    // the transaction should commit during the call to process
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+    // but the data won't be visible yet
+    Assert.assertEquals(0,
+        read(Datasets.load(FILE_DATASET_URI)).size());
+
+    sink.stop();
+
+    Assert.assertEquals(
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
+  }
+
+  @Test
+  public void testCommitOnBatchFalse() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    // the transaction should not commit during the call to process
+    assertThrows("Transaction should still be open", IllegalStateException.class,
+        new Callable() {
+          @Override
+          public Object call() throws EventDeliveryException {
+            in.getTransaction().begin();
+            return null;
+          }
+        });
+
+    // the data won't be visible
+    Assert.assertEquals(0,
+        read(Datasets.load(FILE_DATASET_URI)).size());
+
+    sink.stop();
+
+    Assert.assertEquals(
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
+    // the transaction should commit during the call to stop 
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+  }
+
+  @Test
+  public void testCloseAndCreateWriter() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    sink.rollWriter(true, true);
+    Assert.assertNotNull("Writer should not be null", sink.getWriter());
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+
+    sink.stop();
+
+    Assert.assertEquals(
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
+  }
+
+  @Test
+  public void testCloseWriter() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    sink.rollWriter(true, false);
+    Assert.assertNull("Writer should be null", sink.getWriter());
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+
+    sink.stop();
+
+    Assert.assertEquals(
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
+  }
+
+  @Test
+  public void testCreateWriter() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    sink.rollWriter(false, true);
+    Assert.assertNotNull("Writer should be null", sink.getWriter());
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+
+    sink.stop();
+
+    Assert.assertEquals(0, read(Datasets.load(FILE_DATASET_URI)).size());
+  }
+
+  @Test
+  public void testThrowAwayWriter() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    sink.rollWriter(false, false);
+    Assert.assertNull("Writer should be null", sink.getWriter());
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+
+    sink.stop();
+
+    Assert.assertEquals(0, read(Datasets.load(FILE_DATASET_URI)).size());
   }
 
   public static DatasetSink sink(Channel in, Context config) {

@@ -25,7 +25,6 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -205,6 +204,11 @@ public class DatasetSink extends AbstractSink implements Configurable {
   @VisibleForTesting
   public void roll() {
     lastRolledMs = 0l;
+  }
+
+  @VisibleForTesting
+  DatasetWriter<GenericRecord> getWriter() {
+    return writer;
   }
 
   @Override
@@ -411,10 +415,14 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * @return True if and only if the sink should roll the writer
    */
   private boolean shouldRoll() {
+    long currentTimeMillis = System.currentTimeMillis();
     long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
-        System.currentTimeMillis() - lastRolledMs);
+        currentTimeMillis - lastRolledMs);
 
-    return elapsedTimeSeconds > rollIntervalS;
+    LOG.debug("Current time: {}, lastRolled: {}, diff: {} sec",
+        new Object[] {currentTimeMillis, lastRolledMs, elapsedTimeSeconds});
+
+    return elapsedTimeSeconds >= rollIntervalS;
   }
 
   /**
@@ -427,7 +435,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
    *                                means we can't guarantee previously written
    *                                records were persisted.
    */
-  private void rollWriter(boolean closeWriter, boolean createNewWriter)
+  @VisibleForTesting
+  void rollWriter(boolean closeWriter, boolean createNewWriter)
       throws EventDeliveryException {
     try {
       // close the current writer and get a new one
