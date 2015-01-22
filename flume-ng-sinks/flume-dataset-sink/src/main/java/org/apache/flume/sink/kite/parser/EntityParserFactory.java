@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flume.sink.kite;
+package org.apache.flume.sink.kite.parser;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;

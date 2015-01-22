@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flume.sink.kite;
+package org.apache.flume.sink.kite.parser;
 
 import com.google.common.base.Preconditions;
 import com.google.common.cache.CacheBuilder;
@@ -39,6 +39,7 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
+import org.apache.flume.sink.kite.NonRecoverableEventException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;

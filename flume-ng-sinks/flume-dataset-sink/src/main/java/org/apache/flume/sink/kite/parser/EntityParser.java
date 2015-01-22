@@ -16,13 +16,14 @@
  * limitations under the License.
  */
 
-package org.apache.flume.sink.kite;
+package org.apache.flume.sink.kite.parser;
 
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
+import org.apache.flume.sink.kite.NonRecoverableEventException;
 
 @NotThreadSafe
 public interface EntityParser<E> {

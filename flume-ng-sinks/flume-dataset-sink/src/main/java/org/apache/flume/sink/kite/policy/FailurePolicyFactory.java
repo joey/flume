@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flume.sink.kite;
+package org.apache.flume.sink.kite.policy;
 
 import java.util.Arrays;
 import org.apache.flume.Context;

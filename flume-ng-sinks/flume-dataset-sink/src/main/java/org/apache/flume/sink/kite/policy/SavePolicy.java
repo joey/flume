@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flume.sink.kite;
+package org.apache.flume.sink.kite.policy;
 
 import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;

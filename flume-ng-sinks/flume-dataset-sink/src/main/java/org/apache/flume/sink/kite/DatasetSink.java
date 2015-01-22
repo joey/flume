@@ -16,6 +16,10 @@
  */
 package org.apache.flume.sink.kite;
 
+import org.apache.flume.sink.kite.parser.EntityParserFactory;
+import org.apache.flume.sink.kite.parser.EntityParser;
+import org.apache.flume.sink.kite.policy.FailurePolicy;
+import org.apache.flume.sink.kite.policy.FailurePolicyFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
