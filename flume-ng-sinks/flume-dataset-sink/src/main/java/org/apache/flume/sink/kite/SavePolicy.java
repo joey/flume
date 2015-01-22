@@ -42,7 +42,7 @@ public class SavePolicy implements FailurePolicy {
   private DatasetWriter<AvroFlumeEvent> writer;
   private int nEventsHandled;
 
-  public SavePolicy(Context context) {
+  private SavePolicy(Context context) {
     String uri = context.getString(CONFIG_KITE_ERROR_DATASET_URI);
     Preconditions.checkArgument(uri != null, "Must set "
         + CONFIG_KITE_ERROR_DATASET_URI + " when " + CONFIG_FAILURE_POLICY
@@ -104,4 +104,12 @@ public class SavePolicy implements FailurePolicy {
     return charSeqMap;
   }
 
+  public static class Builder implements FailurePolicy.Builder {
+
+    @Override
+    public FailurePolicy build(Context config) {
+      return new SavePolicy(config);
+    }
+    
+  }
 }

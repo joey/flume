@@ -19,6 +19,8 @@
 package org.apache.flume.sink.kite;
 
 import javax.annotation.concurrent.NotThreadSafe;
+import org.apache.avro.Schema;
+import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 
@@ -39,4 +41,15 @@ public interface EntityParser<E> {
    */
   public E parse(Event event, E reuse) throws EventDeliveryException,
       NonRecoverableEventException;
+
+  /**
+   * Knows how to build {@code EntityParser}s. Implementers must provide a
+   * no-arg constructor.
+   * 
+   * @param <E> The type of entities generated
+   */
+  public static interface Builder<E> {
+
+    public EntityParser<E> build(Schema datasetSchema, Context config);
+  }
 }

@@ -22,7 +22,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -102,8 +101,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
   private EntityParser<GenericRecord> parser = null;
 
   /**
-   * A class implementing a failure policy for events that had a
-   * non-recoverable error during processing.
+   * A class implementing a failure newPolicy for events that had a
+ non-recoverable error during processing.
    */
   private FailurePolicy policy = null;
 
@@ -121,6 +120,10 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * process.
    */
   private Transaction transaction = null;
+
+  // Factories
+  private EntityParserFactory parserFactory = new EntityParserFactory();
+  private FailurePolicyFactory policyFactory = new FailurePolicyFactory();
 
   /**
    * Return the list of allowed formats.
@@ -169,16 +172,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
     this.setName(datasetUri.toString());
 
     // Create the configured failure policy
-    String policyName = context.getString(CONFIG_FAILURE_POLICY,
-        DEFAULT_FAILURE_POLICY);
-    if (policyName.equals(RETRY_FAILURE_POLICY)) {
-      this.policy = new RetryPolicy();
-    } else if (policyName.equals(SAVE_FAILURE_POLICY)) {
-      this.policy = new SavePolicy(context);
-    } else {
-      throw new IllegalArgumentException("Invalid failure policy '" + policyName 
-          + "'. Available policies: " + Arrays.toString(AVAILABLE_POLICIES));
-    }
+    this.policy = policyFactory.newPolicy(context);
 
     // other configuration
     this.batchSize = context.getLong(CONFIG_KITE_BATCH_SIZE,
@@ -202,13 +196,28 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * Causes the sink to roll at the next {@link #process()} call.
    */
   @VisibleForTesting
-  public void roll() {
+  void roll() {
     lastRolledMs = 0l;
   }
 
   @VisibleForTesting
   DatasetWriter<GenericRecord> getWriter() {
     return writer;
+  }
+
+  @VisibleForTesting
+  void setWriter(DatasetWriter<GenericRecord> writer) {
+    this.writer = writer;
+  }
+
+  @VisibleForTesting
+  void setParser(EntityParser<GenericRecord> parser) {
+    this.parser = parser;
+  }
+
+  @VisibleForTesting
+  void setPolicy(FailurePolicy policy) {
+    this.policy = policy;
   }
 
   @Override
@@ -266,7 +275,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
       // commit transaction
       if (commitOnBatch) {
-        // End the batch with the failure policy first. If this fails, we'll
+        // End the batch with the failure newPolicy first. If this fails, we'll
         // end up rolling back the transaction, so we don't need to do the sync
         policy.endBatch();
 
@@ -334,10 +343,11 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * 
    * @param event The event to write
    * @throws EventDeliveryException An error occurred trying to write to the
-   *                                dataset that couldn't or shouldn't be
-   *                                handled by the failure policy.
+                                dataset that couldn't or shouldn't be
+                                handled by the failure newPolicy.
    */
-  private void write(Event event) throws EventDeliveryException {
+  @VisibleForTesting
+  void write(Event event) throws EventDeliveryException {
     try {
       entity = parser.parse(event, reuseEntity ? entity : null);
       bytesParsed += event.getBody().length;
@@ -386,7 +396,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
       if (datasetSchema == null || !newSchema.equals(datasetSchema)) {
         this.datasetSchema = descriptor.getSchema();
         // dataset schema has changed, create a new parser
-        parser = newParser();
+        parser = parserFactory.newParser(datasetSchema, context);
       }
 
       this.reuseEntity = !("parquet".equals(formatName));
@@ -501,23 +511,6 @@ public class DatasetSink extends AbstractSink implements Configurable {
       transaction = null;
       lastRolledMs = System.currentTimeMillis();
       bytesParsed = 0l;
-    }
-  }
-
-  /**
-   * Create a new entity parser
-   * 
-   * @return The entity parser
-   */
-  private EntityParser<GenericRecord> newParser() {
-    String parserType = context.getString(CONFIG_ENTITY_PARSER,
-        DEFAULT_ENTITY_PARSER);
-
-    if (parserType.equals(AVRO_ENTITY_PARSER)) {
-      return new AvroParser(datasetSchema);
-    } else {
-      throw new IllegalArgumentException("Invalid entity parser '" + parserType
-          + "'. Available parsers: " + Arrays.toString(AVAILABLE_PARSERS));
     }
   }
 

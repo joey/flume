@@ -18,6 +18,7 @@
 
 package org.apache.flume.sink.kite;
 
+import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 
@@ -59,5 +60,20 @@ public interface FailurePolicy {
    *                                retried.
    */
   public void endBatch() throws EventDeliveryException;
+
+  /**
+   * Knows how to build {@code FailurePolicy}s. Implementers must provide a
+   * no-arg constructor.
+   */
+  public static interface Builder {
+
+    /**
+     * Build a new {@code FailurePolicy}
+     * 
+     * @param config The Flume configuration context
+     * @return The {@code FailurePolicy}
+     */
+    FailurePolicy build(Context config);
+  }
   
 }

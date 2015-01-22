@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
+import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericRecordBuilder;
@@ -67,9 +68,11 @@ import org.junit.Test;
 import org.kitesdk.data.Dataset;
 import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.DatasetReader;
+import org.kitesdk.data.DatasetWriter;
 import org.kitesdk.data.Datasets;
 import org.kitesdk.data.PartitionStrategy;
 import org.kitesdk.data.View;
+import static org.mockito.Mockito.*;
 
 public class TestDatasetSink {
 
@@ -201,7 +204,7 @@ public class TestDatasetSink {
   }
 
   @Test
-  public void testFileStore() throws EventDeliveryException {
+  public void testFileStore() throws EventDeliveryException, NonRecoverableEventException, NonRecoverableEventException {
     DatasetSink sink = sink(in, config);
 
     // run the sink
@@ -706,6 +709,91 @@ public class TestDatasetSink {
     sink.stop();
 
     Assert.assertEquals(0, read(Datasets.load(FILE_DATASET_URI)).size());
+  }
+
+  @Test
+  public void testAppendWriteExceptionInvokesPolicy()
+      throws EventDeliveryException, NonRecoverableEventException {
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    // Mock an Event
+    Event mockEvent = mock(Event.class);
+    when(mockEvent.getBody()).thenReturn(new byte[] { 0x01 });
+
+    // Mock a GenericRecord
+    GenericRecord mockRecord = mock(GenericRecord.class);
+
+    // Mock an EntityParser
+    EntityParser<GenericRecord> mockParser = mock(EntityParser.class);
+    when(mockParser.parse(eq(mockEvent), any(GenericRecord.class)))
+        .thenReturn(mockRecord);
+    sink.setParser(mockParser);
+
+    // Mock a FailurePolicy
+    FailurePolicy mockPolicy = mock(FailurePolicy.class);
+    sink.setPolicy(mockPolicy);
+
+    // Mock a DatasetWriter
+    DatasetWriter<GenericRecord> mockWriter = mock(DatasetWriter.class);
+    doThrow(new DataFileWriter.AppendWriteException(new IOException()))
+        .when(mockWriter).write(mockRecord);
+
+    sink.setWriter(mockWriter);
+    sink.write(mockEvent);
+
+    // Verify that the event was sent to the policy
+    verify(mockPolicy).handle(eq(mockEvent), any(Throwable.class));
+
+    sink.stop();
+  }
+
+  @Test
+  public void testRuntimeExceptionThrowsEventDeliveryException()
+      throws EventDeliveryException, NonRecoverableEventException {
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    // Mock an Event
+    Event mockEvent = mock(Event.class);
+    when(mockEvent.getBody()).thenReturn(new byte[] { 0x01 });
+
+    // Mock a GenericRecord
+    GenericRecord mockRecord = mock(GenericRecord.class);
+
+    // Mock an EntityParser
+    EntityParser<GenericRecord> mockParser = mock(EntityParser.class);
+    when(mockParser.parse(eq(mockEvent), any(GenericRecord.class)))
+        .thenReturn(mockRecord);
+    sink.setParser(mockParser);
+
+    // Mock a FailurePolicy
+    FailurePolicy mockPolicy = mock(FailurePolicy.class);
+    sink.setPolicy(mockPolicy);
+
+    // Mock a DatasetWriter
+    DatasetWriter<GenericRecord> mockWriter = mock(DatasetWriter.class);
+    doThrow(new RuntimeException()).when(mockWriter).write(mockRecord);
+
+    sink.setWriter(mockWriter);
+
+    try {
+      sink.write(mockEvent);
+      Assert.fail("Should throw EventDeliveryException");
+    } catch (EventDeliveryException ex) {
+
+    }
+
+    // Verify that the event was not sent to the policy
+    verify(mockPolicy, never()).handle(eq(mockEvent), any(Throwable.class));
+
+    sink.stop();
   }
 
   public static DatasetSink sink(Channel in, Context config) {

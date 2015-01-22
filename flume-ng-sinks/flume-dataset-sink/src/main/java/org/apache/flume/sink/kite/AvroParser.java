@@ -36,6 +36,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
+import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.hadoop.conf.Configuration;
@@ -127,7 +128,7 @@ public class AvroParser implements EntityParser<GenericRecord> {
    * 
    * @param datasetSchema The schema of the destination dataset.
    */
-  public AvroParser(Schema datasetSchema) {
+  private AvroParser(Schema datasetSchema) {
     this.datasetSchema = datasetSchema;
   }
 
@@ -193,5 +194,14 @@ public class AvroParser implements EntityParser<GenericRecord> {
       throw new NonRecoverableEventException("Cannot parse schema",
           ex.getCause());
     }
+  }
+
+  public static class Builder implements EntityParser.Builder<GenericRecord> {
+
+    @Override
+    public EntityParser<GenericRecord> build(Schema datasetSchema, Context config) {
+      return new AvroParser(datasetSchema);
+    }
+    
   }
 }

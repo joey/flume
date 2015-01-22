@@ -18,6 +18,7 @@
 
 package org.apache.flume.sink.kite;
 
+import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.slf4j.Logger;
@@ -30,6 +31,9 @@ import org.slf4j.LoggerFactory;
 public class RetryPolicy implements FailurePolicy {
   private static final Logger LOG = LoggerFactory.getLogger(RetryPolicy.class);
 
+  private RetryPolicy() {
+  }
+
   @Override
   public void handle(Event event, Throwable cause) throws EventDeliveryException {
     LOG.error("Event delivery failed: " + cause.getLocalizedMessage());
@@ -41,5 +45,14 @@ public class RetryPolicy implements FailurePolicy {
   @Override
   public void endBatch() throws EventDeliveryException {
     // do nothing
+  }
+
+  public static class Builder implements FailurePolicy.Builder {
+
+    @Override
+    public FailurePolicy build(Context config) {
+      return new RetryPolicy();
+    }
+    
   }
 }
