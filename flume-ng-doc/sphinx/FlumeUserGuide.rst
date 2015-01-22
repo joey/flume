@@ -2166,10 +2166,29 @@ Property Name            Default  Description
 **kite.dataset.uri**     --       URI of the dataset to open
 kite.repo.uri            --       URI of the repository to open
                                   (deprecated; use kite.dataset.uri instead)
+kite.dataset.namespace   --       Namespace of the Dataset where records will be written
+                                  (deprecated; use kite.dataset.uri instead)
 kite.dataset.name        --       Name of the Dataset where records will be written
                                   (deprecated; use kite.dataset.uri instead)
 kite.batchSize           100      Number of records to process in each batch
 kite.rollInterval        30       Maximum wait time (seconds) before data files are released
+kite.commitOnBatch       true     If true, the file will be synced and the Flume transaction
+                                  will be commited on each batch of ``kite.batchSize`` records.
+                                  Parquet doesn't support sync, so this setting will be ignored
+                                  and the behavior will be the same as if this was ``false``.
+kite.entityParser        avro     Parser that turns Flume ``Events`` into Kite entities.
+                                  Valid values are ``avro`` and the fully-qualified class name
+                                  of an implementation of the ``EntityParser.Builder`` interface.
+kite.failurePolicy       retry    Policy that handles non-recoverable erros such as a missing
+                                  ``Schema`` in the ``Event`` header. The default value, ``retry``,
+                                  will fail the current batch and try again which matches the old
+                                  behavior. Other valid values are ``save``, which will write the
+                                  raw ``Event`` to the ``kite.error.dataset.uri`` dataset, and the
+                                  fully-qualified class name of an implementation of the
+                                  ``FailurePolicy.Builder`` interface.
+kite.error.dataset.uri   --       URI of the dataset failed events are saved when
+                                  ``kite.failurePolicy`` is set to ``save``. **Required** when
+                                  the ``kite.failurePolicy`` is set to ``save``.
 auth.kerberosPrincipal   --       Kerberos user principal for secure authentication to HDFS
 auth.kerberosKeytab      --       Kerberos keytab location (local FS) for the principal
 auth.proxyUser           --       The effective user for HDFS actions, if different from

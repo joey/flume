@@ -69,7 +69,7 @@ public class DatasetSinkConstants {
   /**
    * Parser used to parse Flume Events into Kite entities.
    */
-  public static final String CONFIG_ENTITY_PARSER = "kite.entity-parser";
+  public static final String CONFIG_ENTITY_PARSER = "kite.entityParser";
 
   /**
    * Built-in entity parsers
@@ -83,7 +83,7 @@ public class DatasetSinkConstants {
   /**
    * Policy used to handle non-recoverable failures.
    */
-  public static final String CONFIG_FAILURE_POLICY = "kite.failure-policy";
+  public static final String CONFIG_FAILURE_POLICY = "kite.failurePolicy";
 
   /**
    * Write non-recoverable Flume events to a Kite dataset.
