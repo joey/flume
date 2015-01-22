@@ -19,6 +19,7 @@
 package org.apache.flume.sink.kite.policy;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -95,13 +96,8 @@ public class SavePolicy implements FailurePolicy {
    * Helper function to convert a map of String to a map of CharSequence.
    */
   private static Map<CharSequence, CharSequence> toCharSeqMap(
-      Map<String, String> stringMap) {
-    Map<CharSequence, CharSequence> charSeqMap
-        = new HashMap<CharSequence, CharSequence>();
-    for (Map.Entry<String, String> entry : stringMap.entrySet()) {
-      charSeqMap.put(entry.getKey(), entry.getValue());
-    }
-    return charSeqMap;
+      Map<String, String> map) {
+    return Maps.<CharSequence, CharSequence>newHashMap(map);
   }
 
   public static class Builder implements FailurePolicy.Builder {

@@ -48,6 +48,7 @@ import org.apache.avro.generic.GenericRecordBuilder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.reflect.ReflectDatumWriter;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
@@ -535,6 +536,9 @@ public class TestDatasetSink {
 
   @Test
   public void testFileStoreWithSavePolicy() throws EventDeliveryException {
+    if (Datasets.exists(ERROR_DATASET_URI)) {
+      Datasets.delete(ERROR_DATASET_URI);
+    }
     config.put(DatasetSinkConstants.CONFIG_FAILURE_POLICY,
         DatasetSinkConstants.SAVE_FAILURE_POLICY);
     config.put(DatasetSinkConstants.CONFIG_KITE_ERROR_DATASET_URI,
@@ -554,6 +558,9 @@ public class TestDatasetSink {
 
   @Test
   public void testMissingSchemaWithSavePolicy() throws EventDeliveryException {
+    if (Datasets.exists(ERROR_DATASET_URI)) {
+      Datasets.delete(ERROR_DATASET_URI);
+    }
     config.put(DatasetSinkConstants.CONFIG_FAILURE_POLICY,
         DatasetSinkConstants.SAVE_FAILURE_POLICY);
     config.put(DatasetSinkConstants.CONFIG_KITE_ERROR_DATASET_URI,
@@ -570,13 +577,82 @@ public class TestDatasetSink {
     sink.process();
     sink.stop();
 
+    Assert.assertEquals("Good records should have been written",
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
     Assert.assertEquals("Should not have rolled back", 0, remaining(in));
     Assert.assertEquals("Should have saved the bad event",
         Sets.newHashSet(AvroFlumeEvent.newBuilder()
           .setBody(ByteBuffer.wrap(badEvent.getBody()))
-          .setHeaders(new HashMap<CharSequence, CharSequence>())
+          .setHeaders(toUtf8Map(badEvent.getHeaders()))
           .build()),
         read(Datasets.load(ERROR_DATASET_URI, AvroFlumeEvent.class)));
+  }
+
+  @Test
+  public void testSerializedWithIncompatibleSchemasWithSavePolicy()
+      throws EventDeliveryException {
+    if (Datasets.exists(ERROR_DATASET_URI)) {
+      Datasets.delete(ERROR_DATASET_URI);
+    }
+    config.put(DatasetSinkConstants.CONFIG_FAILURE_POLICY,
+        DatasetSinkConstants.SAVE_FAILURE_POLICY);
+    config.put(DatasetSinkConstants.CONFIG_KITE_ERROR_DATASET_URI,
+        ERROR_DATASET_URI);
+    final DatasetSink sink = sink(in, config);
+
+    GenericRecordBuilder builder = new GenericRecordBuilder(
+        INCOMPATIBLE_SCHEMA);
+    GenericData.Record rec = builder.set("username", "koala").build();
+
+    // We pass in a valid schema in the header, but an incompatible schema
+    // was used to serialize the record
+    Event badEvent = event(rec, INCOMPATIBLE_SCHEMA, SCHEMA_FILE, true);
+    putToChannel(in, badEvent);
+
+    // run the sink
+    sink.start();
+    sink.process();
+    sink.stop();
+
+    Assert.assertEquals("Good records should have been written",
+        Sets.newHashSet(expected),
+        read(Datasets.load(FILE_DATASET_URI)));
+    Assert.assertEquals("Should not have rolled back", 0, remaining(in));
+    Assert.assertEquals("Should have saved the bad event",
+        Sets.newHashSet(AvroFlumeEvent.newBuilder()
+          .setBody(ByteBuffer.wrap(badEvent.getBody()))
+          .setHeaders(toUtf8Map(badEvent.getHeaders()))
+          .build()),
+        read(Datasets.load(ERROR_DATASET_URI, AvroFlumeEvent.class)));
+  }
+
+  @Test
+  public void testSerializedWithIncompatibleSchemas() throws EventDeliveryException {
+    final DatasetSink sink = sink(in, config);
+
+    GenericRecordBuilder builder = new GenericRecordBuilder(
+        INCOMPATIBLE_SCHEMA);
+    GenericData.Record rec = builder.set("username", "koala").build();
+
+    // We pass in a valid schema in the header, but an incompatible schema
+    // was used to serialize the record
+    putToChannel(in, event(rec, INCOMPATIBLE_SCHEMA, SCHEMA_FILE, true));
+
+    // run the sink
+    sink.start();
+    assertThrows("Should fail", EventDeliveryException.class,
+        new Callable() {
+          @Override
+          public Object call() throws EventDeliveryException {
+            sink.process();
+            return null;
+          }
+        });
+    sink.stop();
+
+    Assert.assertEquals("Should have rolled back",
+        expected.size() + 1, remaining(in));
   }
 
   @Test
@@ -629,7 +705,7 @@ public class TestDatasetSink {
     Assert.assertEquals(
         Sets.newHashSet(expected),
         read(Datasets.load(FILE_DATASET_URI)));
-    // the transaction should commit during the call to stop 
+    // the transaction should commit during the call to stop
     Assert.assertEquals("Should have committed", 0, remaining(in));
   }
 
@@ -909,5 +985,20 @@ public class TestDatasetSink {
     } catch (Exception actual) {
       Assert.assertEquals(message, expected, actual.getClass());
     }
+  }
+
+  /**
+   * Helper function to convert a map of String to a map of Utf8.
+   *
+   * @param map A Map of String to String
+   * @return The same mappings converting the {@code String}s to {@link Utf8}s
+   */
+  public static Map<CharSequence, CharSequence> toUtf8Map(
+      Map<String, String> map) {
+    Map<CharSequence, CharSequence> utf8Map = Maps.newHashMap();
+    for (Map.Entry<String, String> entry : map.entrySet()) {
+      utf8Map.put(new Utf8(entry.getKey()), new Utf8(entry.getValue()));
+    }
+    return utf8Map;
   }
 }
