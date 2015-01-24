@@ -21,7 +21,6 @@ package org.apache.flume.sink.kite.policy;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -30,6 +29,7 @@ import org.apache.flume.source.avro.AvroFlumeEvent;
 import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.DatasetWriter;
 import org.kitesdk.data.Datasets;
+import org.kitesdk.data.Formats;
 import org.kitesdk.data.View;
 
 import static org.apache.flume.sink.kite.DatasetSinkConstants.*;
@@ -79,7 +79,21 @@ public class SavePolicy implements FailurePolicy {
   }
 
   @Override
-  public void endBatch() throws EventDeliveryException {
+  public void sync() throws EventDeliveryException {
+    if (nEventsHandled > 0) {
+      if (Formats.PARQUET.equals(
+          dataset.getDataset().getDescriptor().getFormat())) {
+        // We need to close the writer on sync if we're writing to a Parquet
+        // dataset
+        close();
+      } else {
+        writer.sync();
+      }
+    }
+  }
+
+  @Override
+  public void close() throws EventDeliveryException {
     if (nEventsHandled > 0) {
       try {
         writer.close();
@@ -106,6 +120,6 @@ public class SavePolicy implements FailurePolicy {
     public FailurePolicy build(Context config) {
       return new SavePolicy(config);
     }
-    
+
   }
 }

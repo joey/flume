@@ -2179,14 +2179,14 @@ kite.commitOnBatch       true     If true, the file will be synced and the Flume
 kite.entityParser        avro     Parser that turns Flume ``Events`` into Kite entities.
                                   Valid values are ``avro`` and the fully-qualified class name
                                   of an implementation of the ``EntityParser.Builder`` interface.
-kite.failurePolicy       retry    Policy that handles non-recoverable erros such as a missing
+kite.failurePolicy       retry    Policy that handles non-recoverable errors such as a missing
                                   ``Schema`` in the ``Event`` header. The default value, ``retry``,
                                   will fail the current batch and try again which matches the old
                                   behavior. Other valid values are ``save``, which will write the
                                   raw ``Event`` to the ``kite.error.dataset.uri`` dataset, and the
                                   fully-qualified class name of an implementation of the
                                   ``FailurePolicy.Builder`` interface.
-kite.error.dataset.uri   --       URI of the dataset failed events are saved when
+kite.error.dataset.uri   --       URI of the dataset where failed events are saved when
                                   ``kite.failurePolicy`` is set to ``save``. **Required** when
                                   the ``kite.failurePolicy`` is set to ``save``.
 auth.kerberosPrincipal   --       Kerberos user principal for secure authentication to HDFS

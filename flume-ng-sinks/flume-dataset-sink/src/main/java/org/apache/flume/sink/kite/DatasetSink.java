@@ -6,13 +6,13 @@
  * "License"); you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.flume.sink.kite;
 
@@ -58,9 +58,10 @@ import static org.apache.flume.sink.kite.DatasetSinkConstants.*;
 /**
  * Sink that writes events to a Kite Dataset. This sink will parse the body of
  * each incoming event and store the resulting entity in a Kite Dataset. It
- * determines datasetUri Dataset by opening a dataset URI
+ * determines the destination Dataset by opening a dataset URI
  * {@code kite.dataset.uri} or opening a repository URI, {@code kite.repo.uri},
- * and loading a Dataset by name, {@code kite.dataset.name}.
+ * and loading a Dataset by name, {@code kite.dataset.name}, and namespace,
+ * {@code kite.dataset.namespace}.
  */
 public class DatasetSink extends AbstractSink implements Configurable {
 
@@ -82,7 +83,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
   /**
    * The number of seconds to wait before rolling a writer.
    */
-  private int rollIntervalS = DEFAULT_ROLL_INTERVAL;
+  private int rollIntervalSeconds = DEFAULT_ROLL_INTERVAL;
 
   /**
    * Flag that says if Flume should commit on every batch.
@@ -92,7 +93,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
   /**
    * The last time the writer rolled.
    */
-  private long lastRolledMs = 0l;
+  private long lastRolledMillis = 0l;
 
   /**
    * The raw number of bytes parsed.
@@ -108,7 +109,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * A class implementing a failure newPolicy for events that had a
  non-recoverable error during processing.
    */
-  private FailurePolicy policy = null;
+  private FailurePolicy failurePolicy = null;
 
   private SinkCounter counter = null;
 
@@ -126,8 +127,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
   private Transaction transaction = null;
 
   // Factories
-  private EntityParserFactory parserFactory = new EntityParserFactory();
-  private FailurePolicyFactory policyFactory = new FailurePolicyFactory();
+  private static final EntityParserFactory parserFactory = new EntityParserFactory();
+  private static final FailurePolicyFactory policyFactory = new FailurePolicyFactory();
 
   /**
    * Return the list of allowed formats.
@@ -158,14 +159,12 @@ public class DatasetSink extends AbstractSink implements Configurable {
       this.datasetName = uriToName(datasetUri);
     } else {
       String repositoryURI = context.getString(CONFIG_KITE_REPO_URI);
-      Preconditions.checkNotNull(repositoryURI, "Repository URI is missing."
-          + " You must set either " + CONFIG_KITE_DATASET_URI + " or both"
-          + " " + CONFIG_KITE_REPO_URI + " and " + CONFIG_KITE_DATASET_NAME);
+      Preconditions.checkNotNull(repositoryURI, "No dataset configured. Setting "
+          + CONFIG_KITE_DATASET_URI + " is required.");
 
       this.datasetName = context.getString(CONFIG_KITE_DATASET_NAME);
-      Preconditions.checkNotNull(datasetName, "Dataset name is missing."
-          + " You must set either " + CONFIG_KITE_DATASET_URI + " or both"
-          + " " + CONFIG_KITE_REPO_URI + " and " + CONFIG_KITE_DATASET_NAME);
+      Preconditions.checkNotNull(datasetName, "No dataset configured. Setting "
+          + CONFIG_KITE_DATASET_URI + " is required.");
 
       String namespace = context.getString(CONFIG_KITE_DATASET_NAMESPACE,
           DEFAULT_NAMESPACE);
@@ -175,13 +174,13 @@ public class DatasetSink extends AbstractSink implements Configurable {
     }
     this.setName(datasetUri.toString());
 
-    // Create the configured failure policy
-    this.policy = policyFactory.newPolicy(context);
+    // Create the configured failure failurePolicy
+    this.failurePolicy = policyFactory.newPolicy(context);
 
     // other configuration
     this.batchSize = context.getLong(CONFIG_KITE_BATCH_SIZE,
         DEFAULT_BATCH_SIZE);
-    this.rollIntervalS = context.getInteger(CONFIG_KITE_ROLL_INTERVAL,
+    this.rollIntervalSeconds = context.getInteger(CONFIG_KITE_ROLL_INTERVAL,
         DEFAULT_ROLL_INTERVAL);
 
     this.counter = new SinkCounter(datasetName);
@@ -189,7 +188,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
   @Override
   public synchronized void start() {
-    lastRolledMs = System.currentTimeMillis();
+    this.lastRolledMillis = System.currentTimeMillis();
     counter.start();
     // signal that this sink is ready to process
     LOG.info("Started DatasetSink " + getName());
@@ -201,7 +200,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
    */
   @VisibleForTesting
   void roll() {
-    lastRolledMs = 0l;
+    this.lastRolledMillis = 0l;
   }
 
   @VisibleForTesting
@@ -220,75 +219,72 @@ public class DatasetSink extends AbstractSink implements Configurable {
   }
 
   @VisibleForTesting
-  void setPolicy(FailurePolicy policy) {
-    this.policy = policy;
+  void setFailurePolicy(FailurePolicy failurePolicy) {
+    this.failurePolicy = failurePolicy;
   }
 
   @Override
   public synchronized void stop() {
     counter.stop();
 
-    if (writer != null) {
-      try {
-        // Close the writer and commit the transaction,
-        // but don't create a new writer
-        rollWriter(true, false);
-      } catch (EventDeliveryException ex) {
-        LOG.warn("Rolling the writer failed: " + ex.getLocalizedMessage());
-        LOG.debug("Exception follows.", ex);
-        // We don't propogate the exception as the transaction would have been
-        // rolled back and we can still finish stopping
-      }
+    try {
+      // Close the writer and commit the transaction,
+      // but don't create a new writer
+      closeWriter();
+      commitTransaction();
+    } catch (EventDeliveryException ex) {
+      rollbackTransaction();
+
+      LOG.warn("Closing the writer failed: " + ex.getLocalizedMessage());
+      LOG.debug("Exception follows.", ex);
+      // We don't propogate the exception as the transaction would have been
+      // rolled back and we can still finish stopping
     }
 
-    // signal that this sink has stopped
+  // signal that this sink has stopped
     LOG.info("Stopped dataset sink: " + getName());
     super.stop();
   }
 
   @Override
   public Status process() throws EventDeliveryException {
-    if (writer == null) {
-      this.writer = newWriter();
-    }
 
-    if (shouldRoll()) {
-      rollWriter(true, true);
-    }
-
-    Channel channel = getChannel();
     try {
+      if (shouldRoll()) {
+        // close the current writer
+        closeWriter();
+
+        // commit transaction
+        commitTransaction();
+
+        // create a new writer
+        newWriter();
+      }
+
+      Channel channel = getChannel();
+
       long processedEvents = 0;
 
-      // TODO: Can the same Sink object be called from multiple threads
-      if (transaction == null) {
-        transaction = channel.getTransaction();
-        transaction.begin();
-      }
+      // Enter the transaction boundary if we haven't already
+      enterTransaction(channel);
 
       for (; processedEvents < batchSize; processedEvents += 1) {
         Event event = channel.take();
-        
+
         if (event == null) {
           // no events available in the channel
           break;
         }
-        
+
         write(event);
       }
 
       // commit transaction
       if (commitOnBatch) {
-        // End the batch with the failure newPolicy first. If this fails, we'll
-        // end up rolling back the transaction, so we don't need to do the sync
-        policy.endBatch();
-
         // Sync before commiting. A failure here will result in rolling back
         // the transaction
         writer.sync();
-        transaction.commit();
-        transaction.close();
-        transaction = null;
+        commitTransaction();
       }
 
       if (processedEvents == 0) {
@@ -307,33 +303,14 @@ public class DatasetSink extends AbstractSink implements Configurable {
     } catch (Throwable th) {
       // catch-all for any unhandled Throwable so that the transaction is
       // correctly rolled back.
-      if (transaction != null) {
-        try {
-          transaction.rollback();
-          transaction.close();
-        } catch (Exception ex) {
-          LOG.error("Transaction rollback failed: " + ex.getLocalizedMessage());
-          LOG.debug("Exception follows.", ex);
-          // We don't propogate the exception as the original throwable will
-          // be propogated later.
-        } finally {
-          transaction = null;
-        }
-      }
+      rollbackTransaction();
 
-      // We don't want to close the writer because that will persist data 
+      // We don't want to close the writer because that will persist data
       // that will be replayed. This will avoid duplicate data.
       // This is also no different the the no-op close the writer does if
-      // it's already in the ERROR state.
-      try {
-        rollWriter(false, true);
-      } catch (EventDeliveryException ex) {
-        LOG.warn("Rolling the writer failed, will retry: "
-            + ex.getLocalizedMessage());
-        LOG.debug("Exception follows.", ex);
-        // We don't propogate the exception as the original throwable will
-        // be propogated later.
-      }
+      // it's already in the ERROR state. We can just set it to null and a
+      // new one will be created the next call to process.
+      this.writer = null;
 
       // handle the exception
       Throwables.propagateIfInstanceOf(th, Error.class);
@@ -344,7 +321,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
   /**
    * Parse the event using the entity parser and write the entity to the dataset.
-   * 
+   *
    * @param event The event to write
    * @throws EventDeliveryException An error occurred trying to write to the
                                 dataset that couldn't or shouldn't be
@@ -353,8 +330,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
   @VisibleForTesting
   void write(Event event) throws EventDeliveryException {
     try {
-      entity = parser.parse(event, reuseEntity ? entity : null);
-      bytesParsed += event.getBody().length;
+      this.entity = parser.parse(event, reuseEntity ? entity : null);
+      this.bytesParsed += event.getBody().length;
 
       // writeEncoded would be an optimization in some cases, but HBase
       // will not support it and partitioned Datasets need to get partition
@@ -362,9 +339,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
       // serialization round-trip otherwise.
       writer.write(entity);
     } catch (NonRecoverableEventException ex) {
-      policy.handle(event, ex);
+      failurePolicy.handle(event, ex);
     } catch (DataFileWriter.AppendWriteException ex) {
-      policy.handle(event, ex);
+      failurePolicy.handle(event, ex);
     } catch (RuntimeException ex) {
       Throwables.propagateIfInstanceOf(ex, EventDeliveryException.class);
       throw new EventDeliveryException(ex);
@@ -373,15 +350,14 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
   /**
    * Create a new writer.
-   * 
+   *
    * This method also re-loads the dataset so updates to the configuration or
    * a dataset created after Flume starts will be loaded.
-   * 
-   * @return The dataset writer
+   *
    * @throws EventDeliveryException There was an error creating the writer.
    */
-  private DatasetWriter<GenericRecord> newWriter()
-      throws EventDeliveryException {
+  @VisibleForTesting
+  void newWriter() throws EventDeliveryException {
     try {
       View<GenericRecord> view = KerberosUtil.runPrivileged(login,
           new PrivilegedExceptionAction<Dataset<GenericRecord>>() {
@@ -410,117 +386,144 @@ public class DatasetSink extends AbstractSink implements Configurable {
           DEFAULT_COMMIT_ON_BATCH) && !("parquet".equals(formatName));
       this.datasetName = view.getDataset().getName();
 
-      return view.newWriter();
+      this.writer = view.newWriter();
+
+      // Reset the last rolled time and the metrics
+      this.lastRolledMillis = System.currentTimeMillis();
+      this.bytesParsed = 0l;
     } catch (DatasetNotFoundException ex) {
       throw new EventDeliveryException("Dataset " + datasetUri + " not found."
           + " The dataset must be created before Flume can write to it.", ex);
     } catch (RuntimeException ex) {
       throw new EventDeliveryException("Error trying to open a new"
-          + " writer for dataset " + datasetUri + ": "
-          + ex.getLocalizedMessage(), ex);
+          + " writer for dataset " + datasetUri, ex);
     }
   }
 
   /**
    * Return true if the sink should roll the writer.
-   * 
-   * Currently, this is based on time since the last roll.
-   * 
+   *
+   * Currently, this is based on time since the last roll or if the current
+   * writer is null.
+   *
    * @return True if and only if the sink should roll the writer
    */
   private boolean shouldRoll() {
     long currentTimeMillis = System.currentTimeMillis();
     long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
-        currentTimeMillis - lastRolledMs);
+        currentTimeMillis - lastRolledMillis);
 
     LOG.debug("Current time: {}, lastRolled: {}, diff: {} sec",
-        new Object[] {currentTimeMillis, lastRolledMs, elapsedTimeSeconds});
+        new Object[] {currentTimeMillis, lastRolledMillis, elapsedTimeSeconds});
 
-    return elapsedTimeSeconds >= rollIntervalS;
+    return elapsedTimeSeconds >= rollIntervalSeconds || writer == null;
   }
 
   /**
-   * Roll the dataset writer. If there's an error during the roll, the
-   * transaction will be rolled back.
-   * 
-   * @param closeWriter If true, the current writer is closed
-   * @param createNewWriter If true, a new writer is created
-   * @throws EventDeliveryException There was an error during the roll which
-   *                                means we can't guarantee previously written
-   *                                records were persisted.
+   * Close the current writer.
+   *
+   * This method always sets the current writer to null even if close fails.
+   * If this method throws an Exception, callers *must* rollback any active
+   * transaction to ensure that data is replayed.
+   *
+   * @throws EventDeliveryException
    */
   @VisibleForTesting
-  void rollWriter(boolean closeWriter, boolean createNewWriter)
-      throws EventDeliveryException {
-    try {
-      // close the current writer and get a new one
-      if (writer != null && closeWriter) {
-        try {
-          writer.close();
-        } catch (DatasetIOException ex) {
-          throw new EventDeliveryException("Check HDFS permissions/health. IO"
-              + " error trying to close the  writer for dataset " + datasetUri
-              + ": " + ex.getLocalizedMessage(), ex);
-        } catch (DatasetWriterException ex) {
-          throw new EventDeliveryException("Failure moving temp file: "
-              + ex.getLocalizedMessage(), ex);
-        } catch (RuntimeException ex) {
-          throw new EventDeliveryException("Error trying to close the  writer for"
-              + " dataset " + datasetUri + ": " + ex.getLocalizedMessage(), ex);
-        }
-      }
-      writer = null;
-
-      // commit transaction
-      if (transaction != null) {
-        policy.endBatch();
-        transaction.commit();
-        transaction.close();
-        transaction = null;
-      }
-
-      if (createNewWriter) {
-        writer = newWriter();
-      }
-
-      if (closeWriter) {
-        // Only log if we closed the old writer
-        long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
-            System.currentTimeMillis() - lastRolledMs);
-        LOG.info("Rolled writer for {} after {} seconds and {} bytes parsed",
-            new Object[]{datasetUri, elapsedTimeSeconds, bytesParsed});
-      }
-    } catch (Exception ex) {
+  void closeWriter() throws EventDeliveryException {
+    if (writer != null) {
       try {
-        // If the transaction wasn't committed before we got the exception, we
-        // need to rollback.
-        if (transaction != null) {
-          transaction.rollback();
-          transaction.close();
-          transaction = null;
-        }
-      } catch (RuntimeException rollbackException) {
-        LOG.error("Transaction rollback failed: "
-            + rollbackException.getLocalizedMessage());
-        LOG.debug("Exception follows.", rollbackException);
-      }
+        writer.close();
 
-      Throwables.propagateIfInstanceOf(ex, EventDeliveryException.class);
-      throw new EventDeliveryException("Failed to roll writer for " + datasetUri
-          + ": " + ex.getLocalizedMessage(), ex);
-    } finally {
-      // The transaction was either committed or rolled back, either way make
-      // sure that it's set to null so a new transaction will be retrieved from
-      // the channel during process
-      transaction = null;
-      lastRolledMs = System.currentTimeMillis();
-      bytesParsed = 0l;
+        long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(
+            System.currentTimeMillis() - lastRolledMillis);
+        LOG.info("Closed writer for {} after {} seconds and {} bytes parsed",
+            new Object[]{datasetUri, elapsedTimeSeconds, bytesParsed});
+      } catch (DatasetIOException ex) {
+        throw new EventDeliveryException("Check HDFS permissions/health. IO"
+            + " error trying to close the  writer for dataset " + datasetUri,
+            ex);
+      } catch (DatasetWriterException ex) {
+        throw new EventDeliveryException("Failure moving temp file.", ex);
+      } catch (RuntimeException ex) {
+        throw new EventDeliveryException("Error trying to close the  writer for"
+            + " dataset " + datasetUri, ex);
+      } finally {
+        // If we failed to close the writer then we give up on it as we'll
+        // end up throwing an EventDeliveryException which will result in
+        // a transaction rollback and a replay of any events written by this
+        // writer.
+        this.writer = null;
+        failurePolicy.close();
+      }
     }
   }
 
   /**
+   * Enter the transaction boundary. This will either begin a new transaction
+   * if one didn't already exist. If we're already in a transaction boundary,
+   * then this method does nothing.
+   *
+   * @param channel The Sink's channel
+   * @throws EventDeliveryException There was an error starting a new batch
+   *                                with the failure policy.
+   */
+  private void enterTransaction(Channel channel) throws EventDeliveryException {
+    // There's no synchronization around the transaction instance because the
+    // Sink API states "the Sink#process() call is guaranteed to only
+    // be accessed  by a single thread". Technically other methods could be
+    // called concurrently, but the implementation of SinkRunner waits
+    // for the Thread running process() to end before calling stop()
+    if (transaction == null) {
+      this.transaction = channel.getTransaction();
+      transaction.begin();
+      failurePolicy = policyFactory.newPolicy(context);
+    }
+  }
+
+  /**
+   * Commit and close the transaction.
+   *
+   * If this method throws an Exception the caller *must* ensure that the
+   * transaction is rolled back. Callers can roll back the transaction by
+   * calling {@link #rollbackTransaction()}.
+   *
+   * @throws EventDeliveryException There was an error ending the batch with
+   *                                the failure policy.
+   */
+  @VisibleForTesting
+  void commitTransaction() throws EventDeliveryException {
+    if (transaction != null) {
+      failurePolicy.sync();
+      transaction.commit();
+      transaction.close();
+      this.transaction = null;
+    }
+  }
+
+  /**
+   * Rollback the transaction. If there is a RuntimeException during rollback,
+   * it will be logged but the transaction instance variable will still be
+   * nullified.
+   */
+  private void rollbackTransaction() {
+    if (transaction != null) {
+      try {
+        // If the transaction wasn't committed before we got the exception, we
+        // need to rollback.
+          transaction.rollback();
+      } catch (RuntimeException ex) {
+        LOG.error("Transaction rollback failed: " + ex.getLocalizedMessage());
+        LOG.debug("Exception follows.", ex);
+      } finally {
+        transaction.close();
+        this.transaction = null;
+      }
+    }
+}
+
+  /**
    * Get the name of the dataset from the URI
-   * 
+   *
    * @param uri The dataset or view URI
    * @return The dataset name
    */

@@ -76,7 +76,7 @@ public class EntityParserFactory {
 
       parser = builder.build(datasetSchema, config);
     }
-   
+
     return parser;
   }
 }

@@ -43,7 +43,12 @@ public class RetryPolicy implements FailurePolicy {
   }
 
   @Override
-  public void endBatch() throws EventDeliveryException {
+  public void sync() throws EventDeliveryException {
+    // do nothing
+  }
+
+  @Override
+  public void close() throws EventDeliveryException {
     // do nothing
   }
 
@@ -53,6 +58,6 @@ public class RetryPolicy implements FailurePolicy {
     public FailurePolicy build(Context config) {
       return new RetryPolicy();
     }
-    
+
   }
 }

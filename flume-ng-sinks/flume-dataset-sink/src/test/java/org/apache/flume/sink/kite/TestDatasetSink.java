@@ -719,7 +719,10 @@ public class TestDatasetSink {
     sink.start();
     sink.process();
 
-    sink.rollWriter(true, true);
+    sink.closeWriter();
+    sink.commitTransaction();
+    sink.newWriter();
+
     Assert.assertNotNull("Writer should not be null", sink.getWriter());
     Assert.assertEquals("Should have committed", 0, remaining(in));
 
@@ -740,7 +743,9 @@ public class TestDatasetSink {
     sink.start();
     sink.process();
 
-    sink.rollWriter(true, false);
+    sink.closeWriter();
+    sink.commitTransaction();
+
     Assert.assertNull("Writer should be null", sink.getWriter());
     Assert.assertEquals("Should have committed", 0, remaining(in));
 
@@ -761,27 +766,9 @@ public class TestDatasetSink {
     sink.start();
     sink.process();
 
-    sink.rollWriter(false, true);
-    Assert.assertNotNull("Writer should be null", sink.getWriter());
-    Assert.assertEquals("Should have committed", 0, remaining(in));
-
-    sink.stop();
-
-    Assert.assertEquals(0, read(Datasets.load(FILE_DATASET_URI)).size());
-  }
-
-  @Test
-  public void testThrowAwayWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
-        Boolean.toString(false));
-    DatasetSink sink = sink(in, config);
-
-    // run the sink
-    sink.start();
-    sink.process();
-
-    sink.rollWriter(false, false);
-    Assert.assertNull("Writer should be null", sink.getWriter());
+    sink.commitTransaction();
+    sink.newWriter();
+    Assert.assertNotNull("Writer should not be null", sink.getWriter());
     Assert.assertEquals("Should have committed", 0, remaining(in));
 
     sink.stop();
@@ -812,8 +799,8 @@ public class TestDatasetSink {
     sink.setParser(mockParser);
 
     // Mock a FailurePolicy
-    FailurePolicy mockPolicy = mock(FailurePolicy.class);
-    sink.setPolicy(mockPolicy);
+    FailurePolicy mockFailurePolicy = mock(FailurePolicy.class);
+    sink.setFailurePolicy(mockFailurePolicy);
 
     // Mock a DatasetWriter
     DatasetWriter<GenericRecord> mockWriter = mock(DatasetWriter.class);
@@ -823,8 +810,8 @@ public class TestDatasetSink {
     sink.setWriter(mockWriter);
     sink.write(mockEvent);
 
-    // Verify that the event was sent to the policy
-    verify(mockPolicy).handle(eq(mockEvent), any(Throwable.class));
+    // Verify that the event was sent to the failure policy
+    verify(mockFailurePolicy).handle(eq(mockEvent), any(Throwable.class));
 
     sink.stop();
   }
@@ -852,8 +839,8 @@ public class TestDatasetSink {
     sink.setParser(mockParser);
 
     // Mock a FailurePolicy
-    FailurePolicy mockPolicy = mock(FailurePolicy.class);
-    sink.setPolicy(mockPolicy);
+    FailurePolicy mockFailurePolicy = mock(FailurePolicy.class);
+    sink.setFailurePolicy(mockFailurePolicy);
 
     // Mock a DatasetWriter
     DatasetWriter<GenericRecord> mockWriter = mock(DatasetWriter.class);
@@ -868,8 +855,8 @@ public class TestDatasetSink {
 
     }
 
-    // Verify that the event was not sent to the policy
-    verify(mockPolicy, never()).handle(eq(mockEvent), any(Throwable.class));
+    // Verify that the event was not sent to the failure policy
+    verify(mockFailurePolicy, never()).handle(eq(mockEvent), any(Throwable.class));
 
     sink.stop();
   }
