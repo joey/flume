@@ -127,8 +127,10 @@ public class DatasetSink extends AbstractSink implements Configurable {
   private Transaction transaction = null;
 
   // Factories
-  private static final EntityParserFactory parserFactory = new EntityParserFactory();
-  private static final FailurePolicyFactory policyFactory = new FailurePolicyFactory();
+  private static final EntityParserFactory ENTITY_PARSER_FACTORY =
+      new EntityParserFactory();
+  private static final FailurePolicyFactory FAILURE_POLICY_FACTORY =
+      new FailurePolicyFactory();
 
   /**
    * Return the list of allowed formats.
@@ -175,7 +177,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
     this.setName(datasetUri.toString());
 
     // Create the configured failure failurePolicy
-    this.failurePolicy = policyFactory.newPolicy(context);
+    this.failurePolicy = FAILURE_POLICY_FACTORY.newPolicy(context);
 
     // other configuration
     this.batchSize = context.getLong(CONFIG_KITE_BATCH_SIZE,
@@ -376,7 +378,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
       if (datasetSchema == null || !newSchema.equals(datasetSchema)) {
         this.datasetSchema = descriptor.getSchema();
         // dataset schema has changed, create a new parser
-        parser = parserFactory.newParser(datasetSchema, context);
+        parser = ENTITY_PARSER_FACTORY.newParser(datasetSchema, context);
       }
 
       this.reuseEntity = !("parquet".equals(formatName));
@@ -476,7 +478,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
     if (transaction == null) {
       this.transaction = channel.getTransaction();
       transaction.begin();
-      failurePolicy = policyFactory.newPolicy(context);
+      failurePolicy = FAILURE_POLICY_FACTORY.newPolicy(context);
     }
   }
 
