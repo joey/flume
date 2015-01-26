@@ -88,7 +88,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
   /**
    * Flag that says if Flume should commit on every batch.
    */
-  private boolean commitOnBatch = DEFAULT_COMMIT_ON_BATCH;
+  private boolean commitOnBatch = DEFAULT_AVRO_COMMIT_ON_BATCH;
 
   /**
    * The last time the writer rolled.
@@ -125,6 +125,12 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * process.
    */
   private Transaction transaction = null;
+
+  /**
+   * Internal flag on if there has been a batch of records committed. This is
+   * used during rollback to know if the current writer needs to be closed.
+   */
+  private boolean committedBatch = false;
 
   // Factories
   private static final EntityParserFactory ENTITY_PARSER_FACTORY =
@@ -230,8 +236,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
     counter.stop();
 
     try {
-      // Close the writer and commit the transaction,
-      // but don't create a new writer
+      // Close the writer and commit the transaction, but don't create a new
+      // writer since we're stopping
       closeWriter();
       commitTransaction();
     } catch (EventDeliveryException ex) {
@@ -250,22 +256,16 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
   @Override
   public Status process() throws EventDeliveryException {
+    long processedEvents = 0;
 
     try {
       if (shouldRoll()) {
-        // close the current writer
         closeWriter();
-
-        // commit transaction
         commitTransaction();
-
-        // create a new writer
-        newWriter();
+        createWriter();
       }
 
       Channel channel = getChannel();
-
-      long processedEvents = 0;
 
       // Enter the transaction boundary if we haven't already
       enterTransaction(channel);
@@ -286,39 +286,46 @@ public class DatasetSink extends AbstractSink implements Configurable {
         // Sync before commiting. A failure here will result in rolling back
         // the transaction
         writer.sync();
-        commitTransaction();
+        boolean committed = commitTransaction();
+        Preconditions.checkState(committed,
+            "Tried to commit a batch when there was no transaction");
+        committedBatch |= committed;
       }
-
-      if (processedEvents == 0) {
-        counter.incrementBatchEmptyCount();
-        return Status.BACKOFF;
-      } else if (processedEvents < batchSize) {
-        counter.incrementBatchUnderflowCount();
-      } else {
-        counter.incrementBatchCompleteCount();
-      }
-
-      counter.addToEventDrainSuccessCount(processedEvents);
-
-      return Status.READY;
-
     } catch (Throwable th) {
       // catch-all for any unhandled Throwable so that the transaction is
       // correctly rolled back.
       rollbackTransaction();
 
-      // We don't want to close the writer because that will persist data
-      // that will be replayed. This will avoid duplicate data.
-      // This is also no different the the no-op close the writer does if
-      // it's already in the ERROR state. We can just set it to null and a
-      // new one will be created the next call to process.
-      this.writer = null;
+      if (commitOnBatch && committedBatch) {
+        try {
+          closeWriter();
+        } catch (EventDeliveryException ex) {
+          LOG.warn("Error closing writer there may be temp files that need to"
+              + " be manually recovered: " + ex.getLocalizedMessage());
+          LOG.debug("Exception follows.", ex);
+        }
+      } else {
+        this.writer = null;
+      }
 
       // handle the exception
       Throwables.propagateIfInstanceOf(th, Error.class);
       Throwables.propagateIfInstanceOf(th, EventDeliveryException.class);
       throw new EventDeliveryException(th);
     }
+
+    if (processedEvents == 0) {
+      counter.incrementBatchEmptyCount();
+      return Status.BACKOFF;
+    } else if (processedEvents < batchSize) {
+      counter.incrementBatchUnderflowCount();
+    } else {
+      counter.incrementBatchCompleteCount();
+    }
+
+    counter.addToEventDrainSuccessCount(processedEvents);
+
+    return Status.READY;
   }
 
   /**
@@ -327,7 +334,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * @param event The event to write
    * @throws EventDeliveryException An error occurred trying to write to the
                                 dataset that couldn't or shouldn't be
-                                handled by the failure newPolicy.
+                                handled by the failure policy.
    */
   @VisibleForTesting
   void write(Event event) throws EventDeliveryException {
@@ -359,7 +366,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * @throws EventDeliveryException There was an error creating the writer.
    */
   @VisibleForTesting
-  void newWriter() throws EventDeliveryException {
+  void createWriter() throws EventDeliveryException {
+    // reset the commited flag whenver a new writer is created
+    committedBatch = false;
     try {
       View<GenericRecord> view = KerberosUtil.runPrivileged(login,
           new PrivilegedExceptionAction<Dataset<GenericRecord>>() {
@@ -382,10 +391,8 @@ public class DatasetSink extends AbstractSink implements Configurable {
       }
 
       this.reuseEntity = !("parquet".equals(formatName));
-      // Commit on batch if kite.commitOnBatch is true and the format isn't
-      // parquet
-      this.commitOnBatch = context.getBoolean(CONFIG_COMMIT_ON_BATCH,
-          DEFAULT_COMMIT_ON_BATCH) && !("parquet".equals(formatName));
+      this.commitOnBatch = context.getBoolean(CONFIG_AVRO_COMMIT_ON_BATCH,
+          DEFAULT_AVRO_COMMIT_ON_BATCH) && ("avro".equals(formatName));
       this.datasetName = view.getDataset().getName();
 
       this.writer = view.newWriter();
@@ -452,8 +459,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
       } finally {
         // If we failed to close the writer then we give up on it as we'll
         // end up throwing an EventDeliveryException which will result in
-        // a transaction rollback and a replay of any events written by this
-        // writer.
+        // a transaction rollback and a replay of any events written during
+        // the current transaction. If commitOnBatch is true, you can still
+        // end up with orphaned temp files that have data to be recovered.
         this.writer = null;
         failurePolicy.close();
       }
@@ -489,16 +497,21 @@ public class DatasetSink extends AbstractSink implements Configurable {
    * transaction is rolled back. Callers can roll back the transaction by
    * calling {@link #rollbackTransaction()}.
    *
+   * @return True if there was an open transaction and it was committed, false
+   *         otherwise.
    * @throws EventDeliveryException There was an error ending the batch with
    *                                the failure policy.
    */
   @VisibleForTesting
-  void commitTransaction() throws EventDeliveryException {
+  boolean commitTransaction() throws EventDeliveryException {
     if (transaction != null) {
       failurePolicy.sync();
       transaction.commit();
       transaction.close();
       this.transaction = null;
+      return true;
+    } else {
+      return false;
     }
   }
 

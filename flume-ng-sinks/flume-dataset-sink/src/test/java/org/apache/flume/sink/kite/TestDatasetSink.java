@@ -33,7 +33,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -678,7 +677,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCommitOnBatchFalse() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -711,7 +710,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCloseAndCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -721,7 +720,7 @@ public class TestDatasetSink {
 
     sink.closeWriter();
     sink.commitTransaction();
-    sink.newWriter();
+    sink.createWriter();
 
     Assert.assertNotNull("Writer should not be null", sink.getWriter());
     Assert.assertEquals("Should have committed", 0, remaining(in));
@@ -735,7 +734,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCloseWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -758,7 +757,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -767,7 +766,7 @@ public class TestDatasetSink {
     sink.process();
 
     sink.commitTransaction();
-    sink.newWriter();
+    sink.createWriter();
     Assert.assertNotNull("Writer should not be null", sink.getWriter());
     Assert.assertEquals("Should have committed", 0, remaining(in));
 

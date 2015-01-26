@@ -2172,10 +2172,12 @@ kite.dataset.name        --       Name of the Dataset where records will be writ
                                   (deprecated; use kite.dataset.uri instead)
 kite.batchSize           100      Number of records to process in each batch
 kite.rollInterval        30       Maximum wait time (seconds) before data files are released
-kite.commitOnBatch       true     If true, the file will be synced and the Flume transaction
+kite.avro.commitOnBatch  true     If true, the writer will be synced and the Flume transaction
                                   will be commited on each batch of ``kite.batchSize`` records.
-                                  Parquet doesn't support sync, so this setting will be ignored
-                                  and the behavior will be the same as if this was ``false``.
+                                  When true, it's possible for temp files with commited data to
+                                  be left in the dataset directory. These files need to be
+                                  be recovered by hand for the data to be visible to
+                                  DatasetReaders.
 kite.entityParser        avro     Parser that turns Flume ``Events`` into Kite entities.
                                   Valid values are ``avro`` and the fully-qualified class name
                                   of an implementation of the ``EntityParser.Builder`` interface.
