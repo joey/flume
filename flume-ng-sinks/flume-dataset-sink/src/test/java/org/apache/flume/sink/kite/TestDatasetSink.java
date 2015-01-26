@@ -860,6 +860,26 @@ public class TestDatasetSink {
     sink.stop();
   }
 
+  @Test
+  public void testProcessHandlesNullWriter() throws EventDeliveryException,
+      NonRecoverableEventException, NonRecoverableEventException {
+    DatasetSink sink = sink(in, config);
+
+    // run the sink
+    sink.start();
+    sink.process();
+
+    // explicitly set the writer to null
+    sink.setWriter(null);
+
+    // this should not throw an NPE
+    sink.process();
+
+    sink.stop();
+
+    Assert.assertEquals("Should have committed", 0, remaining(in));
+  }
+
   public static DatasetSink sink(Channel in, Context config) {
     DatasetSink sink = new DatasetSink();
     sink.setChannel(in);
