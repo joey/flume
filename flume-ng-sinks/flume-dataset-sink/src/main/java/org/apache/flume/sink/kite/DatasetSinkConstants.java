@@ -56,15 +56,18 @@ public class DatasetSinkConstants {
   public static int DEFAULT_ROLL_INTERVAL = 30; // seconds
 
   /**
-   * Flag for committing the Flume transaction on each batch for Avro formatted
+   * Flag for committing the Flume transaction on each batch for Syncable
    * datasets. When set to false, Flume will only commit the transaction when
    * roll interval has expired. Setting this to false requires enough space
    * in the channel to handle all events delivered during the roll interval.
    * Defaults to true.
    */
-  public static final String CONFIG_AVRO_COMMIT_ON_BATCH =
-      "kite.avro.commiteOnBatch";
-  public static boolean DEFAULT_AVRO_COMMIT_ON_BATCH = true;
+  public static final String CONFIG_SYNCABLE_COMMIT_ON_BATCH =
+      "kite.syncable.commiteOnBatch";
+  public static boolean DEFAULT_SYNCABLE_COMMIT_ON_BATCH = true;
+
+  public static final String CONFIG_SYNC_IF_AVAILABLE = "kite.syncIfAvailable";
+  public static boolean DEFAULT_SYNC_IF_AVAILABLE = true;
 
   /**
    * Parser used to parse Flume Events into Kite entities.

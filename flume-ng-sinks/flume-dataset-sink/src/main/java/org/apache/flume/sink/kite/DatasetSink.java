@@ -55,6 +55,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.flume.sink.kite.DatasetSinkConstants.*;
+import org.kitesdk.data.Format;
+import org.kitesdk.data.Formats;
 
 /**
  * Sink that writes events to a Kite Dataset. This sink will parse the body of
@@ -89,7 +91,13 @@ public class DatasetSink extends AbstractSink implements Configurable {
   /**
    * Flag that says if Flume should commit on every batch.
    */
-  private boolean commitOnBatch = DEFAULT_AVRO_COMMIT_ON_BATCH;
+  private boolean commitOnBatch = DEFAULT_SYNCABLE_COMMIT_ON_BATCH;
+
+  /**
+   * Flag that says if Flume should sync when committing if the Dataset
+   * supports it.
+   */
+  private boolean sync = DEFAULT_SYNC_IF_AVAILABLE;
 
   /**
    * The last time the writer rolled.
@@ -287,9 +295,13 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
       // commit transaction
       if (commitOnBatch) {
-        // Sync before commiting. A failure here will result in rolling back
+        // Flush/sync before commiting. A failure here will result in rolling back
         // the transaction
-        writer.sync();
+        if (sync) {
+          writer.sync();
+        } else {
+          writer.flush();
+        }
         boolean committed = commitTransaction();
         Preconditions.checkState(committed,
             "Tried to commit a batch when there was no transaction");
@@ -383,9 +395,9 @@ public class DatasetSink extends AbstractSink implements Configurable {
           });
 
       DatasetDescriptor descriptor = view.getDataset().getDescriptor();
-      String formatName = descriptor.getFormat().getName();
-      Preconditions.checkArgument(allowedFormats().contains(formatName),
-          "Unsupported format: " + formatName);
+      Format format = descriptor.getFormat();
+      Preconditions.checkArgument(allowedFormats().contains(format.getName()),
+          "Unsupported format: " + format.getName());
 
       Schema newSchema = descriptor.getSchema();
       if (datasetSchema == null || !newSchema.equals(datasetSchema)) {
@@ -394,9 +406,18 @@ public class DatasetSink extends AbstractSink implements Configurable {
         parser = ENTITY_PARSER_FACTORY.newParser(datasetSchema, context);
       }
 
-      this.reuseEntity = !("parquet".equals(formatName));
-      this.commitOnBatch = context.getBoolean(CONFIG_AVRO_COMMIT_ON_BATCH,
-          DEFAULT_AVRO_COMMIT_ON_BATCH) && ("avro".equals(formatName));
+      this.reuseEntity = !(Formats.PARQUET.equals(format));
+
+      // TODO: Check that the format implements Syncable after CDK-863
+      // goes in. For now, just check that the Dataset is Avro format
+      this.commitOnBatch = context.getBoolean(CONFIG_SYNCABLE_COMMIT_ON_BATCH,
+          DEFAULT_SYNCABLE_COMMIT_ON_BATCH) && (Formats.AVRO.equals(format));
+
+      // TODO: Check that the format implements Syncable after CDK-863
+      // goes in. For now, just check that the Dataset is Avro format
+      this.sync = context.getBoolean(CONFIG_SYNC_IF_AVAILABLE,
+          DEFAULT_SYNC_IF_AVAILABLE) && (Formats.AVRO.equals(format));
+
       this.datasetName = view.getDataset().getName();
 
       this.writer = view.newWriter();
@@ -445,6 +466,13 @@ public class DatasetSink extends AbstractSink implements Configurable {
   void closeWriter() throws EventDeliveryException {
     if (writer != null) {
       try {
+        // Closing a writer doesn't necessarily sync unless Hadoop has 
+        // dfs.datanode.synconclose set to true so we sync if the user
+        // asked us to.
+        if (sync) {
+          writer.sync();
+        }
+
         writer.close();
 
         long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(

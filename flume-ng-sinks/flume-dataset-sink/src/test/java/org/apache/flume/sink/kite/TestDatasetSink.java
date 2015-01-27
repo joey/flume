@@ -677,7 +677,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCommitOnBatchFalse() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -710,7 +710,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCloseAndCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -734,7 +734,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCloseWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -757,7 +757,7 @@ public class TestDatasetSink {
 
   @Test
   public void testCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_AVRO_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
