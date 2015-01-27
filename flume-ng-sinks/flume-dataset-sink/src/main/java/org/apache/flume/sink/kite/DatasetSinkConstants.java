@@ -56,18 +56,23 @@ public class DatasetSinkConstants {
   public static int DEFAULT_ROLL_INTERVAL = 30; // seconds
 
   /**
-   * Flag for committing the Flume transaction on each batch for Syncable
+   * Flag for committing the Flume transaction on each batch for Flushable
    * datasets. When set to false, Flume will only commit the transaction when
    * roll interval has expired. Setting this to false requires enough space
    * in the channel to handle all events delivered during the roll interval.
    * Defaults to true.
    */
-  public static final String CONFIG_SYNCABLE_COMMIT_ON_BATCH =
-      "kite.syncable.commiteOnBatch";
-  public static boolean DEFAULT_SYNCABLE_COMMIT_ON_BATCH = true;
+  public static final String CONFIG_FLUSHABLE_COMMIT_ON_BATCH =
+      "kite.flushable.commiteOnBatch";
+  public static boolean DEFAULT_FLUSHABLE_COMMIT_ON_BATCH = true;
 
-  public static final String CONFIG_SYNC_IF_AVAILABLE = "kite.syncIfAvailable";
-  public static boolean DEFAULT_SYNC_IF_AVAILABLE = true;
+  /**
+   * Flag for syncing the DatasetWriter on each batch for Syncable
+   * datasets. Defaults to true.
+   */
+  public static final String CONFIG_SYNCABLE_SYNC_ON_BATCH =
+      "kite.syncable.syncOnBatch";
+  public static boolean DEFAULT_SYNCABLE_SYNC_ON_BATCH = true;
 
   /**
    * Parser used to parse Flume Events into Kite entities.

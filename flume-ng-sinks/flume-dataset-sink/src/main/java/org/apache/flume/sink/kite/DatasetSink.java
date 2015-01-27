@@ -91,13 +91,12 @@ public class DatasetSink extends AbstractSink implements Configurable {
   /**
    * Flag that says if Flume should commit on every batch.
    */
-  private boolean commitOnBatch = DEFAULT_SYNCABLE_COMMIT_ON_BATCH;
+  private boolean commitOnBatch = DEFAULT_FLUSHABLE_COMMIT_ON_BATCH;
 
   /**
-   * Flag that says if Flume should sync when committing if the Dataset
-   * supports it.
+   * Flag that says if Flume should sync on every batch.
    */
-  private boolean sync = DEFAULT_SYNC_IF_AVAILABLE;
+  private boolean syncOnBatch = DEFAULT_SYNCABLE_SYNC_ON_BATCH;
 
   /**
    * The last time the writer rolled.
@@ -190,6 +189,15 @@ public class DatasetSink extends AbstractSink implements Configurable {
           .build();
     }
     this.setName(datasetUri.toString());
+
+    if (context.getBoolean(CONFIG_SYNCABLE_SYNC_ON_BATCH,
+        DEFAULT_SYNCABLE_SYNC_ON_BATCH)) {
+      Preconditions.checkArgument(
+          context.getBoolean(CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+              DEFAULT_FLUSHABLE_COMMIT_ON_BATCH), "Configuration error: "
+                  + CONFIG_FLUSHABLE_COMMIT_ON_BATCH + " must be set to true when "
+                  + CONFIG_SYNCABLE_SYNC_ON_BATCH + " is set to true.");
+    }
 
     // Create the configured failure failurePolicy
     this.failurePolicy = FAILURE_POLICY_FACTORY.newPolicy(context);
@@ -297,7 +305,7 @@ public class DatasetSink extends AbstractSink implements Configurable {
       if (commitOnBatch) {
         // Flush/sync before commiting. A failure here will result in rolling back
         // the transaction
-        if (sync) {
+        if (syncOnBatch) {
           writer.sync();
         } else {
           writer.flush();
@@ -408,15 +416,15 @@ public class DatasetSink extends AbstractSink implements Configurable {
 
       this.reuseEntity = !(Formats.PARQUET.equals(format));
 
-      // TODO: Check that the format implements Syncable after CDK-863
+      // TODO: Check that the format implements Flushable after CDK-863
       // goes in. For now, just check that the Dataset is Avro format
-      this.commitOnBatch = context.getBoolean(CONFIG_SYNCABLE_COMMIT_ON_BATCH,
-          DEFAULT_SYNCABLE_COMMIT_ON_BATCH) && (Formats.AVRO.equals(format));
+      this.commitOnBatch = context.getBoolean(CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+          DEFAULT_FLUSHABLE_COMMIT_ON_BATCH) && (Formats.AVRO.equals(format));
 
       // TODO: Check that the format implements Syncable after CDK-863
       // goes in. For now, just check that the Dataset is Avro format
-      this.sync = context.getBoolean(CONFIG_SYNC_IF_AVAILABLE,
-          DEFAULT_SYNC_IF_AVAILABLE) && (Formats.AVRO.equals(format));
+      this.syncOnBatch = context.getBoolean(CONFIG_SYNCABLE_SYNC_ON_BATCH,
+          DEFAULT_SYNCABLE_SYNC_ON_BATCH) && (Formats.AVRO.equals(format));
 
       this.datasetName = view.getDataset().getName();
 
@@ -466,13 +474,6 @@ public class DatasetSink extends AbstractSink implements Configurable {
   void closeWriter() throws EventDeliveryException {
     if (writer != null) {
       try {
-        // Closing a writer doesn't necessarily sync unless Hadoop has 
-        // dfs.datanode.synconclose set to true so we sync if the user
-        // asked us to.
-        if (sync) {
-          writer.sync();
-        }
-
         writer.close();
 
         long elapsedTimeSeconds = TimeUnit.MILLISECONDS.toSeconds(

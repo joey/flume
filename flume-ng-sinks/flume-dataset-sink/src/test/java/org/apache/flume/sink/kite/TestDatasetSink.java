@@ -677,7 +677,9 @@ public class TestDatasetSink {
 
   @Test
   public void testCommitOnBatchFalse() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_SYNC_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -709,8 +711,25 @@ public class TestDatasetSink {
   }
 
   @Test
+  public void testCommitOnBatchFalseSyncOnBatchTrue() throws EventDeliveryException {
+    config.put(DatasetSinkConstants.CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_SYNC_ON_BATCH,
+        Boolean.toString(true));
+
+    try {
+      sink(in, config);
+      Assert.fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException ex) {
+      // expected
+    }
+  }
+
+  @Test
   public void testCloseAndCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_SYNC_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -734,7 +753,9 @@ public class TestDatasetSink {
 
   @Test
   public void testCloseWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_SYNC_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
@@ -757,7 +778,9 @@ public class TestDatasetSink {
 
   @Test
   public void testCreateWriter() throws EventDeliveryException {
-    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_COMMIT_ON_BATCH,
+    config.put(DatasetSinkConstants.CONFIG_FLUSHABLE_COMMIT_ON_BATCH,
+        Boolean.toString(false));
+    config.put(DatasetSinkConstants.CONFIG_SYNCABLE_SYNC_ON_BATCH,
         Boolean.toString(false));
     DatasetSink sink = sink(in, config);
 
